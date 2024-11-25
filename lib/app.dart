@@ -1,3 +1,11 @@
+import 'package:daily_goals/enum/info_dialog_type.dart';
+import 'package:daily_goals/model/database_result.dart';
+import 'package:daily_goals/model/goal_database_result.dart';
+import 'package:daily_goals/service/goal_service.dart';
+import 'package:daily_goals/service_locator.dart';
+import 'package:daily_goals/widget/my_confirmation_dialog.dart';
+import 'package:daily_goals/widget/my_info_dialog.dart';
+import 'package:daily_goals/widget/my_input_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -15,6 +23,7 @@ class _MyHomePageState extends State<MyHomePage> {
   late DateTime selectedDate;
   List<Goal> goals = [];
   TextEditingController newGoalController = TextEditingController();
+  GoalService goalService = serviceLocator.get<GoalService>();
 
   @override
   void initState() {
@@ -40,7 +49,22 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _loadGoals(DateTime dateTime) async {
     setState(() {
       selectedDate = dateTime;
+      goals = [];
     });
+    GoalDatabaseResult dbGoals = await goalService.getAllGoals(date: _getDateString(dateTime));
+    if(dbGoals.succeeded) {
+      setState(() {
+        goals = List.from(dbGoals.goals);
+      });
+    } else {
+      if(mounted) {
+        showMyInfoDialog(
+            context: context,
+            dialogType: InfoDialogType.error,
+            body: 'Error deleting goal: \n ${dbGoals.message}'
+        );
+      }
+    }
   }
 
   String _getDateString(DateTime dateTime) {
@@ -99,7 +123,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   List<Widget> _buildGoalsList() {
     List<Widget> result = goals
-        .where((e) => e.deleted == 0)
         .map((e) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -110,25 +133,81 @@ class _MyHomePageState extends State<MyHomePage> {
                   height: 24,
                   width: 24,
                   child: Checkbox(
-                  value: e.complete == 1,
-                  onChanged: (bool? value) {
-                    setState(() {
-                      e.complete = (value ?? false) ? 1 : 0;
-                    });
+                  value: e.complete,
+                  onChanged: (bool? value) async {
+                    Goal updatedGoal = Goal.fromGoal(e);
+                    updatedGoal.complete = (value ?? false);
+                    DatabaseResult dbResult = await goalService.addOrUpdateGoal(updatedGoal);
+                    if(dbResult.succeeded) {
+                      setState(() {
+                        e.complete = (value ?? false);
+                      });
+                    } else {
+                      if(mounted) {
+                        showMyInfoDialog(
+                          context: context,
+                          dialogType: InfoDialogType.error,
+                          body: "Error updating completion state"
+                        );
+                      }
+                    }
+
                   }),
                 ),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Text(e.content),
+                    child: GestureDetector(
+                      onTap: () async {
+                        String? newText = await showMyInputDialog(context: context, currentText: e.content);
+                        if(newText != null) {
+                          Goal updatedGoal = Goal.fromGoal(e);
+                          updatedGoal.content = (newText);
+                          DatabaseResult dbResult = await goalService.addOrUpdateGoal(updatedGoal);
+                          if(dbResult.succeeded) {
+                            setState(() {
+                              e.content = (newText);
+                            });
+                          } else {
+                            if(mounted) {
+                              showMyInfoDialog(
+                                  context: context,
+                                  dialogType: InfoDialogType.error,
+                                  body: "Error updating contnet"
+                              );
+                            }
+                          }
+                        }
+                      },
+                      child: Text(e.content)
+                    ),
                   ),
                 ),
                 IconButton(
-                  onPressed: () {
-                    // Todo add a confirmation dialog here
-                    setState(() {
-                      e.deleted = 1;
-                    });
+                  onPressed: () async {
+                    if(mounted) {
+                      bool confirmed = await showMyConfirmationDialog(context: context, body: "Are you sure you want to delete this item?");
+                      if(confirmed) {
+                        DatabaseResult deleteResult = await goalService.deleteGoal(goalId: e.id);
+                        if(deleteResult.succeeded) {
+                          setState(() {
+                            goals.removeWhere((element) => element.id == e.id);
+                          });
+                        }
+                        else {
+                          if(mounted) {
+                            showMyInfoDialog(
+                                context: context,
+                                dialogType: InfoDialogType.error,
+                                body: 'Error deleting goal: \n ${deleteResult.message}'
+                            );
+                          }
+                        }
+                      }
+
+                    }
+
+
                   },
                   icon: const Icon(Icons.delete)
                 ),
@@ -147,6 +226,7 @@ class _MyHomePageState extends State<MyHomePage> {
         Expanded(
           child: TextField(
             controller: newGoalController,
+            style: Theme.of(context).textTheme.bodyMedium,
             decoration: const InputDecoration(
               hintText: "New Goal",
             ),
@@ -154,12 +234,27 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ),
         IconButton(
-          onPressed: () {
+          onPressed: () async {
             if(newGoalController.text.trim().isNotEmpty) {
-              goals.add(Goal(date: _getDateString(selectedDate), content: newGoalController.text.trim()));
-              setState(() {
-                newGoalController.text = '';
-              });
+              Goal newGoal = Goal(date: _getDateString(selectedDate), content: newGoalController.text.trim());
+              DatabaseResult dbResult = await goalService.addOrUpdateGoal(newGoal);
+              if(dbResult.succeeded) {
+                newGoal.id = dbResult.newOrUpdatedId;
+                setState(() {
+                  newGoalController.text = '';
+                  goals.add(newGoal);
+                });
+              }
+              else {
+                if(mounted) {
+                  showMyInfoDialog(
+                      context: context,
+                      dialogType: InfoDialogType.error,
+                      body: 'Error creating goal: \n ${dbResult.message}'
+                  );
+                }
+              }
+
             }
           },
           icon: const Icon(Icons.add)
