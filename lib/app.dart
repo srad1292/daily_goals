@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import 'enum/goal_action.dart';
+import 'enum/goal_period.dart';
 import 'model/goal.dart';
 
 class MyHomePage extends StatefulWidget {
@@ -24,6 +25,12 @@ class _MyHomePageState extends State<MyHomePage> {
   List<Goal> goals = [];
   TextEditingController newGoalController = TextEditingController();
   GoalService goalService = serviceLocator.get<GoalService>();
+  GoalPeriod period = GoalPeriod.day;
+  List<String> monthNames = [
+    'Jan', 'Feb', 'Mar', 'Apr', 
+    'May', 'Jun', 'Jul', 'Aug', 
+    'Sep', 'Oct', 'Nov', 'Dec'
+  ];
 
   @override
   void initState() {
@@ -68,9 +75,15 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   String _getDateString(DateTime dateTime) {
+    if(period == GoalPeriod.year) {
+      return '${dateTime.year}';
+    } else if(period == GoalPeriod.month) {
+      return '${monthNames[dateTime.month-1]} ${dateTime.year}';
+    }
     return '${dateTime.year}-${dateTime.month}-${dateTime.day}';
+    
   }
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -82,7 +95,7 @@ class _MyHomePageState extends State<MyHomePage> {
           children: [
             IconButton(
               onPressed: () {
-                _loadGoals(selectedDate.subtract(const Duration(days: 1)));
+                _loadGoals(_getPreviousDateTime(selectedDate));
               },
               icon: const Icon(Icons.chevron_left)
             ),
@@ -95,13 +108,16 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             IconButton(
                 onPressed: () {
-                  _loadGoals(selectedDate.add(const Duration(days: 1)));
+                  _loadGoals(_getNextDateTime(selectedDate));
                 },
                 icon: const Icon(Icons.chevron_right)
             ),
           ],
         ),
         centerTitle: true,
+        actions: [
+          _buildPeriodChangeMenu()
+        ],
       ),
       body:  Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
@@ -120,6 +136,113 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     );
   }
+
+  Widget _buildPeriodChangeMenu() {
+    return PopupMenuButton(
+      onSelected: (value) async {
+        period = value;
+        return _loadGoals(selectedDate);
+      },
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<GoalPeriod>>[
+        if(period != GoalPeriod.day)
+          const PopupMenuItem<GoalPeriod>(
+            value: GoalPeriod.day,
+            child: Text("Day"),
+          ),
+        if(period != GoalPeriod.month)
+          const PopupMenuItem<GoalPeriod>(
+            value: GoalPeriod.month,
+            child: Text("Month"),
+          ),
+        if(period != GoalPeriod.year)
+          const PopupMenuItem<GoalPeriod>(
+            value: GoalPeriod.year,
+            child: Text("Year"),
+          ),
+      ],
+    );
+
+  }
+
+  DateTime _getNextDateTime(DateTime dateTime) {
+    if(period == GoalPeriod.month) {
+      return addOneMonth(dateTime);
+    } else if(period == GoalPeriod.year) {
+      return addOneYear(dateTime);
+    }
+    return dateTime.add(const Duration(days: 1));
+  }
+
+  DateTime _getPreviousDateTime(DateTime dateTime) {
+    if(period == GoalPeriod.month) {
+      return subtractOneMonth(dateTime);
+    } else if(period == GoalPeriod.year) {
+      return subtractOneYear(dateTime);
+    }
+    return dateTime.subtract(const Duration(days: 1));
+
+  }
+
+  DateTime subtractOneMonth(DateTime date) {
+    int newMonth = date.month - 1;
+    int newYear = date.year;
+
+    if (newMonth == 0) {
+      newMonth = 12;
+      newYear -= 1;
+    }
+
+    // Handle the case where the new date is invalid (e.g., February 30)
+    int lastDayOfNewMonth = DateTime(newYear, newMonth + 1, 0).day;
+    int newDay = date.day <= lastDayOfNewMonth ? date.day : lastDayOfNewMonth;
+
+    return DateTime(newYear, newMonth, newDay);
+  }
+
+  DateTime addOneMonth(DateTime date) {
+    int newMonth = date.month + 1;
+    int newYear = date.year;
+
+    if (newMonth == 13) {
+      newMonth = 1;
+      newYear += 1;
+    }
+
+    // Handle the case where the new date is invalid (e.g., February 30)
+    int lastDayOfNewMonth = DateTime(newYear, newMonth + 1, 0).day;
+    int newDay = date.day <= lastDayOfNewMonth ? date.day : lastDayOfNewMonth;
+
+    return DateTime(newYear, newMonth, newDay);
+  }
+
+
+  DateTime subtractOneYear(DateTime date) {
+    int newYear = date.year - 1;
+    int newMonth = date.month;
+    int newDay = date.day;
+
+    // Handle leap year case (e.g., Feb 29 -> Feb 28)
+    // if (newMonth == 2 && newDay == 29 && !DateTime.isLeapYear(newYear)) {
+    //   newDay = 28;
+    // }
+
+    return DateTime(newYear, newMonth, newDay);
+  }
+
+  DateTime addOneYear(DateTime date) {
+    int newYear = date.year + 1;
+    int newMonth = date.month;
+    int newDay = date.day;
+
+    // Handle leap year case (e.g., Feb 29 -> Feb 28)
+    // if (newMonth == 2 && newDay == 29 && !DateTime.isLeapYear(newYear)) {
+    //   newDay = 28;
+    // }
+
+    return DateTime(newYear, newMonth, newDay);
+  }
+
+
 
   List<Widget> _buildGoalsList() {
     List<Widget> result = goals

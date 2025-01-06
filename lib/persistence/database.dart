@@ -35,7 +35,6 @@ class DBProvider {
     await db.execute(_getGoalScheme());
   }
 
-
   String _getGoalScheme() {
     return "CREATE TABLE ${DatabaseTable.goal} ("
         "${DatabaseColumn.goalId} INTEGER PRIMARY KEY,"
